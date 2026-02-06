@@ -58,6 +58,7 @@ Ejemplos (Fila 2 en adelante):
 Uber | Transporte
 Rappi | Comida
 Netflix | Suscripciones
+
 2. Instalar el Script
 
     En tu Google Sheet, ve a Extensiones > Apps Script.
@@ -74,10 +75,23 @@ Netflix | Suscripciones
 
     Añadir activador:
 
-        Función: ejecutarSistemaFinanzas
+    Función: ejecutarSistemaFinanzas
 
-        Fuente: Según tiempo
+    Fuente: Según tiempo
 
-        Tipo: Por minutos (Cada 15 o 30 minutos).
+    Tipo: Por minutos (Cada 15 o 30 minutos).
 
     Guarda y autoriza los permisos de Gmail y Sheets.
+
+🤝 Contribuciones (Cómo agregar más bancos)
+
+El código es modular. Para agregar un nuevo banco (ej. Interbank):
+
+    Copia la función procesarBCP.
+
+    Renómbrala a procesarInterbank.
+
+    Ajusta las Regex para que coincidan con el formato del correo de Interbank.
+
+    Agrega la llamada a la función principal ejecutarSistemaFinanzas.
+Siéntete libre de usarlo y modificarlo para tus propias finanzas.
