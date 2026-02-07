@@ -136,3 +136,14 @@ function cargarMapasCategorias(hoja){
     }
     return mapa;
 }
+ 
+function obtenerCategoria (empresa,mapa){
+    empresa = empresa.toLowerCase();
+    //buscamos si alguna palabra esta dentro del nombre de la empresa
+    for (var key in mapa ){
+        if(empresa.indexOf(key) > -1){
+            return mapa[key];
+        }
+    }
+    return "sin categoria";
+}
