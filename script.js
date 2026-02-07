@@ -41,3 +41,50 @@ function ejecutarSistema(){
     //por ahora solo yape
     procesarModuloYape(hojaDatos,etiqueta,reglasCategorias);
 }
+/**
+ * ------------------
+ * MODULO YAPE
+ * ------------------
+ */
+function procesarModuloYape(hoja,etiqueta,reglasCategorias){
+    //aqui construimos la busqueda usando la variable global de fecha
+    var busqueda = 'from:notificaciones@yape.pe subject:"Tu yapeo de servicio ha sido confirmado" - label:'+GLOBAL_CONFIG.GMAIL_LABEL + 'after:'+GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+
+    //primero traeremos un bloque de 20 correos para no saturar 
+    var hilos = GmailApp.search(busqueda, 0,20);
+
+    //recorreremos cada hilo encontrado
+    hilos.forEach(function(hilo){
+        var mensajes= hilo.getMenssages();
+
+        mensajes.forEach(function(msg){
+            var cuerpo = msg.getPlainBody();
+//---------extraccion de datos-------------------------
+            // 1. monto y moneda
+            var montoObj = extraerMonto(cuerpo);
+            // 2. ID operacion
+            var idOperacion = extraerRegex(cuerpo,/Nº de operacion Yape:\s*(\d+)/, "SinID");
+            //3. Empresa
+            var empresa = extraerRegex(cuerpo, /Empresa:\s*(.+)/, "YapeVarios");
+            //4. Categoria (buscamos de config)
+            var categoria = obtenerCategoria(empresa, reglasCategorias);
+            //5. fecha y hora separadas
+            var fechaRaw = extraerRegex(cuerpo,/Fecha y hora:\s*(.+)/,"");
+            var fechaOBj = procesarFechaYape(fechaRaw);
+//---------carga de datos-------------------------------
+            hoja.appendRow([
+                fechaOBj.fecha,
+                fechaOBj.hora,
+                empresa,
+                "YAPE",
+                GLOBAL_CONFIG.YAPE_CELULAR,
+                montoObj.moneda,
+                montoObj,monto,
+                idOperacion,
+                categoria
+            ]);
+
+        });
+        hilo.addLabel(etiqueta);//esto marcara como procesado en el gmail
+    });   
+}
