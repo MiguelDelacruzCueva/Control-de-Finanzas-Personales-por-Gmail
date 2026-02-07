@@ -147,3 +147,19 @@ function obtenerCategoria (empresa,mapa){
     }
     return "sin categoria";
 }
+//extrator generico 
+function extraerRegex ( texto,regex,def) {
+    varm = texto.match(regex);
+    return m ? m[1].trim() : def;
+}
+//extractor de monto 
+function extraerMonto (texto){
+    var match = texto.match(/(S\/|US\$|\$)\s*([\d.]+)/);
+    var moneda = "S/";
+    var monto = 0.00;
+    if(match){
+        if (match[1].indexOf("$">-1)) moneda = "USD";
+        monto = parseFloat(match[2]);
+    }
+    return {moneda:moneda, monto:monto};
+}
