@@ -163,3 +163,14 @@ function extraerMonto (texto){
     }
     return {moneda:moneda, monto:monto};
 }
+//etiqueta en el gmail
+function obtenerEtiqueta(nombre) {
+    try{
+        var label = GmailApp.getUserLabelByName(nombre);
+        if (!label) label = GmailApp.createLabel(nombre);
+        return label;
+    }catch(e){
+        Logger.log("Error etiqueta: "+e);
+        return null;
+    }
+}
