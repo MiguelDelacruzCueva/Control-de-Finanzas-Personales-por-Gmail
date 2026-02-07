@@ -88,3 +88,37 @@ function procesarModuloYape(hoja,etiqueta,reglasCategorias){
         hilo.addLabel(etiqueta);//esto marcara como procesado en el gmail
     });   
 }
+/**
+ * ------------------------------------------
+ * HERRAMIENTAS O LOS HELPERS REUTILIZABLES
+ * -----------------------------------------
+ * Parsea la fecha de Yape: "30 Ene. 2026 - 01:56 pm" a objetos separados
+ */
+function procesarFechaYape(texto){
+var resultado = {fecha: new Date(), hora: "00:00"};
+var meses = {"Ene":0, "Feb":1, "Mar":2, "Abr":3, "May":4, "Jun":5, "Jul":6, "Ago":7, "Set":8, "Oct":9, "Nov":10, "Dic":11};
+
+try{
+    var partes = texto .match(/(\d+)\s+([A-Z][a-z]+)\.?\s+(\d+)\s+-\s+(\d+):(\d+)\s+(am|pm)/i);
+    if (partes){
+        var dia = parseInt(partes[1]);
+        var mes = meses[partes[2]];
+        var anio = parseInt(partes[3]);
+        var hora = parseInt(partes[4]);
+        var min = parseInt(partes[5]);
+        var ampm = partes[6].toLowerCase();
+        //ajuste de hora 24h para el objeto date
+        var hora24 = hora;
+        if (ampm === "pm" && hora < 12) hora24 += 12;
+        if (ampm === "am" && hora === 12) hora24 = 0;
+        //creamos objeto Date paa la columna fecha
+        resultado.fecha = new Date(anio,mes,dia,hora24,min);
+        //formateamos string 
+        var horaStr = (hora24 < 10? "O" + hora24 : hora24) + ":" + (min < 10 ? "O" + min : min);
+        resultado.hora = horaStr;
+    }
+}catch(e) {
+    Logger.log("ERROR PARSEANDO FECHA YAPE"+ e);
+}
+return resultado;
+}
