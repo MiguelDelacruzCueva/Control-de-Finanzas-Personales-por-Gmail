@@ -19,3 +19,18 @@ const GLOBAL_CONFIG={
     YAPE_CELULAR: "999999999"
 
 };
+/**
+ * ---------------------------------
+ * FUNCION PRINCIPAL (ORQUESTADOR)
+ * ---------------------------------
+ */
+function ejecutarSistema(){
+    var etiqueta = obtenerEtiqueta(GLOBAL_CONFIG.GMAIL_LABEL);
+    if (!etiqueta)return;
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var hojaDatos = ss.getSheetByName(GLOBAL_CONFIG.HOJA_DATOS);
+    var hojaConfig = ss.getSheetByName(GLOBAL_CONFIG.HOJA_CONFIG);
+    
+
+}
