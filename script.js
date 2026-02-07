@@ -122,3 +122,17 @@ try{
 }
 return resultado;
 }
+// Cargar la hoja CONFIG en memoria para buscar rapido
+function cargarMapasCategorias(hoja){
+    var mapa = {};
+    var ultimaFila = hoja.getLastRow();
+    if (ultimaFila > 1){
+        var datos = hoja.getRange(2,1,ultimaFila - 1,2).getValues();// esto lee la columna A y B
+        for  (var i=0; i< datos.lenght; i++){
+            var key = String(datos[i][0]).toLowerCase().trim();
+            var val = String(datos[i][1]).trim();
+            if (key) mapa[key] = val;
+        }       
+    }
+    return mapa;
+}
