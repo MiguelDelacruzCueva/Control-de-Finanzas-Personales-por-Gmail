@@ -31,6 +31,13 @@ function ejecutarSistema(){
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var hojaDatos = ss.getSheetByName(GLOBAL_CONFIG.HOJA_DATOS);
     var hojaConfig = ss.getSheetByName(GLOBAL_CONFIG.HOJA_CONFIG);
-    
 
+    if (!hojaDatos || !hojaConfig){
+        Logger.log("ERROR CRITICO: no existen las hojas 'DATA' o  'CONFIG'.");
+        return;
+    }
+    var reglasCategorias = cargarMapasCategorias(hojaConfig);
+
+    //por ahora solo yape
+    procesarModuloYape(hojaDatos,etiqueta,reglasCategorias);
 }
