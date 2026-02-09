@@ -38,54 +38,105 @@ function ejecutarSistema(){
     }
     var reglasCategorias = cargarMapasCategorias(hojaConfig);
 
-    //por ahora solo yape
+
+    //solo yape en sus dos formatos
     procesarModuloYape(hojaDatos,etiqueta,reglasCategorias);
 }
 /**
  * ------------------
  * MODULO YAPE
+ * Soporta: Pagos de Servicios y Transferencias Personales
  * ------------------
  */
-function procesarModuloYape(hoja,etiqueta,reglasCategorias){
-    //aqui construimos la busqueda usando la variable global de fecha
-    var busqueda = 'from:notificaciones@yape.pe subject:"Tu yapeo de servicio ha sido confirmado" - label:'+GLOBAL_CONFIG.GMAIL_LABEL + 'after:'+GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+function procesarModuloYape(hoja, etiqueta, reglasCategorias) {
+    // 1. CAMBIO DE ESTRATEGIA: Buscamos SOLO por remitente.
+    // Quitamos el filtro de asunto en la búsqueda de Gmail para que no falle el "OR".
+    var busqueda = 'from:notificaciones@yape.pe -label:' + GLOBAL_CONFIG.GMAIL_LABEL + ' after:' + GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+    
+    Logger.log("--- INICIANDO BÚSQUEDA YAPE ---");
+    Logger.log("Query: " + busqueda);
 
-    //primero traeremos un bloque de 20 correos para no saturar 
-    var hilos = GmailApp.search(busqueda, 0,20);
+    var hilos = GmailApp.search(busqueda, 0, 20);
+    Logger.log("Hilos encontrados: " + hilos.length);
 
-    //recorreremos cada hilo encontrado
-    hilos.forEach(function(hilo){
-        var mensajes= hilo.getMenssages();
+    if (hilos.length === 0) {
+        Logger.log("No se encontraron correos nuevos de Yape.");
+        return;
+    }
 
-        mensajes.forEach(function(msg){
-            var cuerpo = msg.getPlainBody();
-//---------extraccion de datos-------------------------
-            // 1. monto y moneda
-            var montoObj = extraerMonto(cuerpo);
-            // 2. ID operacion
-            var idOperacion = extraerRegex(cuerpo,/Nº de operacion Yape:\s*(\d+)/, "SinID");
-            //3. Empresa
-            var empresa = extraerRegex(cuerpo, /Empresa:\s*(.+)/, "YapeVarios");
-            //4. Categoria (buscamos de config)
-            var categoria = obtenerCategoria(empresa, reglasCategorias);
-            //5. fecha y hora separadas
-            var fechaRaw = extraerRegex(cuerpo,/Fecha y hora:\s*(.+)/,"");
-            var fechaOBj = procesarFechaYape(fechaRaw);
-//---------carga de datos-------------------------------
-            hoja.appendRow([
-                fechaOBj.fecha,
-                fechaOBj.hora,
-                empresa,
-                "YAPE",
-                GLOBAL_CONFIG.YAPE_CELULAR,
-                montoObj.moneda,
-                montoObj,monto,
-                idOperacion,
-                categoria
-            ]);
+    hilos.forEach(function(hilo) {
+        // Obtenemos el asunto del hilo para validar si nos interesa
+        var asunto = hilo.getFirstMessageSubject();
+        
+        // 2. FILTRO EN JAVASCRIPT (INFALIBLE)
+        // Verificamos si el asunto contiene las palabras clave
+        var esServicio = asunto.indexOf("servicio ha sido confirmado") > -1;
+        var esTransferencia = asunto.indexOf("Por tu seguridad") > -1;
 
-        });
-        hilo.addLabel(etiqueta);//esto marcara como procesado en el gmail
+        if (esServicio || esTransferencia) {
+            Logger.log("Procesando correo válido: " + asunto);
+            
+            hilo.getMessages().forEach(function(msg) {
+                var cuerpo = msg.getPlainBody();
+
+                // --------- EXTRACCIÓN DE DATOS -------------------------
+                
+                // 1. Monto (Regex flexible para ambos casos)
+                var montoObj = extraerMonto(cuerpo);
+                
+                // 2. ID Operación
+                var idOperacion = extraerRegex(cuerpo, /N(?:°|º|ro)(?: de)? operación(?: Yape)?\s*:?\s*(\d+)/i, "SinID");    
+                // 3. Empresa
+                var empresa = null;
+                
+                if (esServicio) {
+                    // Lógica para SERVICIOS
+                    empresa = extraerRegex(cuerpo, /Empresa\s*:\s*(.+)/i, null);
+                } else {
+                    // Lógica para TRANSFERENCIa
+                    empresa = extraerRegex(cuerpo, /Nombre del Beneficiario\s*(.+)/i, null);
+                    if (empresa) {
+                        empresa = empresa.replace(/\*$/, "").trim();
+                    } else {
+                        // Intento secundario por si cambia el formato
+                        empresa = "Transferencia Yape"; 
+                    }
+                }
+                // Si aún así es null, ponemos genérico
+                if (!empresa) empresa = "Yape Desconocido";
+                // 4. Categoria
+                var categoria = obtenerCategoria(empresa, reglasCategorias);
+                // 5. Fecha
+                var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora.*?:?\s*(.+)/, "");
+                var fechaObj = procesarFechaYape(fechaRaw);
+
+                // --------- CARGA DE DATOS -------------------------------
+                // Solo guardamos si encontramos un monto válido (> 0)
+                if (montoObj.monto > 0) {
+                    hoja.appendRow([
+                        fechaObj.fecha,
+                        fechaObj.hora,
+                        empresa,
+                        "YAPE",
+                        GLOBAL_CONFIG.YAPE_CELULAR,
+                        montoObj.moneda,
+                        montoObj.monto,
+                        idOperacion,
+                        categoria
+                    ]);
+                    Logger.log("--> Guardado: " + empresa + " | " + montoObj.monto);
+                } else {
+                    Logger.log("--> ALERTA: Correo procesado pero no se encontró monto. Asunto: " + asunto);
+                }
+            });
+            
+            // Marcamos como procesado
+            hilo.addLabel(etiqueta); 
+            
+        } else {
+            Logger.log("Saltando correo irrelevante: " + asunto);
+            // Opcional: Podrías marcarlo también para no volver a leerlo, 
+        }
     });   
 }
 /**
@@ -96,17 +147,21 @@ function procesarModuloYape(hoja,etiqueta,reglasCategorias){
  */
 function procesarFechaYape(texto){
 var resultado = {fecha: new Date(), hora: "00:00"};
-var meses = {"Ene":0, "Feb":1, "Mar":2, "Abr":3, "May":4, "Jun":5, "Jul":6, "Ago":7, "Set":8, "Oct":9, "Nov":10, "Dic":11};
+var meses = {"Ene":0, "Feb":1, "Mar":2, "Abr":3, "May":4, "Jun":5, "Jul":6, "Ago":7, "Set":8, "Oct":9, "Nov":10, "Dic":11,
+    "enero":0, "febrero":1, "marzo":2, "abril":3, "mayo":4, "junio":5, "julio":6, "agosto":7, "septiembre":8, "octubre":9, "noviembre":10, "diciembre":11
+};
 
 try{
-    var partes = texto .match(/(\d+)\s+([A-Z][a-z]+)\.?\s+(\d+)\s+-\s+(\d+):(\d+)\s+(am|pm)/i);
+    var partes = texto.match(/(\d+)\s+([a-zA-Záéíóú]+)\.?\s+(\d+).*?(\d+):(\d+)\s+([ap]\.?\s*m\.?)/i);
     if (partes){
         var dia = parseInt(partes[1]);
+        var nombreMes = partes[2].toLowerCase().replace('.', '');
         var mes = meses[partes[2]];
+        if (mes === undefined) mes = meses[nombreMes.substring(0,3)]; 
         var anio = parseInt(partes[3]);
         var hora = parseInt(partes[4]);
         var min = parseInt(partes[5]);
-        var ampm = partes[6].toLowerCase();
+        var ampm = partes[6].toLowerCase().replace(/\./g, '').replace(/\s/g, '');
         //ajuste de hora 24h para el objeto date
         var hora24 = hora;
         if (ampm === "pm" && hora < 12) hora24 += 12;
@@ -114,11 +169,11 @@ try{
         //creamos objeto Date paa la columna fecha
         resultado.fecha = new Date(anio,mes,dia,hora24,min);
         //formateamos string 
-        var horaStr = (hora24 < 10? "O" + hora24 : hora24) + ":" + (min < 10 ? "O" + min : min);
+        var horaStr = (hora24 < 10? "0" + hora24 : hora24) + ":" + (min < 10 ? "0" + min : min);
         resultado.hora = horaStr;
     }
 }catch(e) {
-    Logger.log("ERROR PARSEANDO FECHA YAPE"+ e);
+    Logger.log("ERROR FECHA YAPE ("+ texto +"): "+ e);
 }
 return resultado;
 }
@@ -128,7 +183,7 @@ function cargarMapasCategorias(hoja){
     var ultimaFila = hoja.getLastRow();
     if (ultimaFila > 1){
         var datos = hoja.getRange(2,1,ultimaFila - 1,2).getValues();// esto lee la columna A y B
-        for  (var i=0; i< datos.lenght; i++){
+        for  (var i=0; i< datos.length; i++){
             var key = String(datos[i][0]).toLowerCase().trim();
             var val = String(datos[i][1]).trim();
             if (key) mapa[key] = val;
@@ -149,7 +204,7 @@ function obtenerCategoria (empresa,mapa){
 }
 //extrator generico 
 function extraerRegex ( texto,regex,def) {
-    varm = texto.match(regex);
+    var m = texto.match(regex);
     return m ? m[1].trim() : def;
 }
 //extractor de monto 
@@ -158,7 +213,7 @@ function extraerMonto (texto){
     var moneda = "S/";
     var monto = 0.00;
     if(match){
-        if (match[1].indexOf("$">-1)) moneda = "USD";
+        if (match[1].indexOf("$") > -1) moneda = "USD";
         monto = parseFloat(match[2]);
     }
     return {moneda:moneda, monto:monto};
