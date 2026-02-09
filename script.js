@@ -44,32 +44,37 @@ function ejecutarSistema(){
 /**
  * ------------------
  * MODULO YAPE
+ * Soporta: Pagos de Servicios y Transferencias Personales
  * ------------------
  */
 function procesarModuloYape(hoja,etiqueta,reglasCategorias){
     //aqui construimos la busqueda usando la variable global de fecha
-    var busqueda = 'from:notificaciones@yape.pe subject:"Tu yapeo de servicio ha sido confirmado" - label:'+GLOBAL_CONFIG.GMAIL_LABEL + 'after:'+GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+    // podra ahora buscar dos tipos de notificaciones de yape
+    var asuntoYape = '(subject:"Tu yapeo de servicio ha sido confirmado" OR sbuject:"Por tu seguridad, te notificaremos por cada yapeo que realices")'; 
+    var busqueda = 'from:notificaciones@yape.pe'+ asuntoYape + '-label:'+GLOBAL_CONFIG.GMAIL_LABEL + 'after:'+GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
 
     //primero traeremos un bloque de 20 correos para no saturar 
     var hilos = GmailApp.search(busqueda, 0,20);
 
     //recorreremos cada hilo encontrado
     hilos.forEach(function(hilo){
-        var mensajes= hilo.getMenssages();
-
-        mensajes.forEach(function(msg){
+        hilo.getMenssages().forEach(function(msg){
             var cuerpo = msg.getPlainBody();
 //---------extraccion de datos-------------------------
             // 1. monto y moneda
             var montoObj = extraerMonto(cuerpo);
             // 2. ID operacion
-            var idOperacion = extraerRegex(cuerpo,/Nº de operacion Yape:\s*(\d+)/, "SinID");
+            var idOperacion = extraerRegex(cuerpo,/N(?:°|º) de operación(?: Yape)?\s*:?\s*(\d+)/, "SinID");
             //3. Empresa
-            var empresa = extraerRegex(cuerpo, /Empresa:\s*(.+)/, "YapeVarios");
+            var empresa = extraerRegex(cuerpo, /Empresa:\s*(.+)/, null);
+            if (!empresa){
+                empresa= extraerRegex(cuerpo,/Nombre del Beneficiario\s*(.+)/,"Yape Varios");
+                empresa=empresa.replace(/\*$/,"").trim();
+            }
             //4. Categoria (buscamos de config)
             var categoria = obtenerCategoria(empresa, reglasCategorias);
             //5. fecha y hora separadas
-            var fechaRaw = extraerRegex(cuerpo,/Fecha y hora:\s*(.+)/,"");
+            var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora(?: de la operación)?\s*:?\s*(.+)/, "");
             var fechaOBj = procesarFechaYape(fechaRaw);
 //---------carga de datos-------------------------------
             hoja.appendRow([
