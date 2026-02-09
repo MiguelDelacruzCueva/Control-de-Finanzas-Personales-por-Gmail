@@ -38,7 +38,8 @@ function ejecutarSistema(){
     }
     var reglasCategorias = cargarMapasCategorias(hojaConfig);
 
-    //por ahora solo yape
+
+    //solo yape en sus dos formatos
     procesarModuloYape(hojaDatos,etiqueta,reglasCategorias);
 }
 /**
@@ -47,50 +48,95 @@ function ejecutarSistema(){
  * Soporta: Pagos de Servicios y Transferencias Personales
  * ------------------
  */
-function procesarModuloYape(hoja,etiqueta,reglasCategorias){
-    //aqui construimos la busqueda usando la variable global de fecha
-    // podra ahora buscar dos tipos de notificaciones de yape
-    var asuntoYape = '{subject:"Tu yapeo de servicio ha sido confirmado" subject:"Por tu seguridad, te notificaremos por cada yapeo que realices"}'; 
-    var busqueda = 'from:notificaciones@yape.pe'+ asuntoYape + ' -label:'+GLOBAL_CONFIG.GMAIL_LABEL + ' after:'+GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+function procesarModuloYape(hoja, etiqueta, reglasCategorias) {
+    // 1. CAMBIO DE ESTRATEGIA: Buscamos SOLO por remitente.
+    // Quitamos el filtro de asunto en la búsqueda de Gmail para que no falle el "OR".
+    var busqueda = 'from:notificaciones@yape.pe -label:' + GLOBAL_CONFIG.GMAIL_LABEL + ' after:' + GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+    
+    Logger.log("--- INICIANDO BÚSQUEDA YAPE ---");
+    Logger.log("Query: " + busqueda);
 
-    //primero traeremos un bloque de 20 correos para no saturar 
-    var hilos = GmailApp.search(busqueda, 0,20);
+    var hilos = GmailApp.search(busqueda, 0, 20);
+    Logger.log("Hilos encontrados: " + hilos.length);
 
-    //recorreremos cada hilo encontrado
-    hilos.forEach(function(hilo){
-        hilo.getMessages().forEach(function(msg){
-            var cuerpo = msg.getPlainBody();
-//---------extraccion de datos-------------------------
-            // 1. monto y moneda
-            var montoObj = extraerMonto(cuerpo);
-            // 2. ID operacion
-            var idOperacion = extraerRegex(cuerpo, /N(?:°|º|ro) de operación(?: Yape)?\s*:?\s*(\d+)/i, "SinID");
-            //3. Empresa
-            var empresa = extraerRegex(cuerpo, /Empresa\s*:\s*(.+)/i, null);
-            if (!empresa){
-                empresa= extraerRegex(cuerpo,/Nombre del Beneficiario\s*(.+)/,"Yape Varios");
-                empresa=empresa.replace(/\*$/,"").trim();
-            }
-            //4. Categoria (buscamos de config)
-            var categoria = obtenerCategoria(empresa, reglasCategorias);
-            //5. fecha y hora separadas
-            var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora(?: de la operación)?\s*:?\s*(.+)/, "");
-            var fechaOBj = procesarFechaYape(fechaRaw);
-//---------carga de datos-------------------------------
-            hoja.appendRow([
-                fechaOBj.fecha,
-                fechaOBj.hora,
-                empresa,
-                "YAPE",
-                GLOBAL_CONFIG.YAPE_CELULAR,
-                montoObj.moneda,
-                montoObj.monto,
-                idOperacion,
-                categoria
-            ]);
+    if (hilos.length === 0) {
+        Logger.log("No se encontraron correos nuevos de Yape.");
+        return;
+    }
 
-        });
-        hilo.addLabel(etiqueta);//esto marcara como procesado en el gmail
+    hilos.forEach(function(hilo) {
+        // Obtenemos el asunto del hilo para validar si nos interesa
+        var asunto = hilo.getFirstMessageSubject();
+        
+        // 2. FILTRO EN JAVASCRIPT (INFALIBLE)
+        // Verificamos si el asunto contiene las palabras clave
+        var esServicio = asunto.indexOf("servicio ha sido confirmado") > -1;
+        var esTransferencia = asunto.indexOf("Por tu seguridad") > -1;
+
+        if (esServicio || esTransferencia) {
+            Logger.log("Procesando correo válido: " + asunto);
+            
+            hilo.getMessages().forEach(function(msg) {
+                var cuerpo = msg.getPlainBody();
+
+                // --------- EXTRACCIÓN DE DATOS -------------------------
+                
+                // 1. Monto (Regex flexible para ambos casos)
+                var montoObj = extraerMonto(cuerpo);
+                
+                // 2. ID Operación
+                var idOperacion = extraerRegex(cuerpo, /N(?:°|º|ro)(?: de)? operación(?: Yape)?\s*:?\s*(\d+)/i, "SinID");    
+                // 3. Empresa
+                var empresa = null;
+                
+                if (esServicio) {
+                    // Lógica para SERVICIOS
+                    empresa = extraerRegex(cuerpo, /Empresa\s*:\s*(.+)/i, null);
+                } else {
+                    // Lógica para TRANSFERENCIa
+                    empresa = extraerRegex(cuerpo, /Nombre del Beneficiario\s*(.+)/i, null);
+                    if (empresa) {
+                        empresa = empresa.replace(/\*$/, "").trim();
+                    } else {
+                        // Intento secundario por si cambia el formato
+                        empresa = "Transferencia Yape"; 
+                    }
+                }
+                // Si aún así es null, ponemos genérico
+                if (!empresa) empresa = "Yape Desconocido";
+                // 4. Categoria
+                var categoria = obtenerCategoria(empresa, reglasCategorias);
+                // 5. Fecha
+                var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora.*?:?\s*(.+)/, "");
+                var fechaObj = procesarFechaYape(fechaRaw);
+
+                // --------- CARGA DE DATOS -------------------------------
+                // Solo guardamos si encontramos un monto válido (> 0)
+                if (montoObj.monto > 0) {
+                    hoja.appendRow([
+                        fechaObj.fecha,
+                        fechaObj.hora,
+                        empresa,
+                        "YAPE",
+                        GLOBAL_CONFIG.YAPE_CELULAR,
+                        montoObj.moneda,
+                        montoObj.monto,
+                        idOperacion,
+                        categoria
+                    ]);
+                    Logger.log("--> Guardado: " + empresa + " | " + montoObj.monto);
+                } else {
+                    Logger.log("--> ALERTA: Correo procesado pero no se encontró monto. Asunto: " + asunto);
+                }
+            });
+            
+            // Marcamos como procesado
+            hilo.addLabel(etiqueta); 
+            
+        } else {
+            Logger.log("Saltando correo irrelevante: " + asunto);
+            // Opcional: Podrías marcarlo también para no volver a leerlo, 
+        }
     });   
 }
 /**
