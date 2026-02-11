@@ -15,8 +15,11 @@ const GLOBAL_CONFIG={
     //etiqueta de gmail para no repetir el correo
     GMAIL_LABEL: "PROCESADO_APP_FINANZAS",
 
-    //Datos fijo de yape por ejemplo
-    YAPE_CELULAR: "999999999"
+    //Datos YAPE
+    YAPE_CELULAR: "999999999",
+    //Datos BCP
+    BCP_REMITENTE: "notificaciones@notificacionesbcp.com.pe"
+    //Datos ...
 
 };
 /**
@@ -38,9 +41,14 @@ function ejecutarSistema(){
     }
     var reglasCategorias = cargarMapasCategorias(hojaConfig);
 
-
-    //solo yape en sus dos formatos
+//******************************************************************* */
+    //EJECUTA YAPE
     procesarModuloYape(hojaDatos,etiqueta,reglasCategorias);
+    //EJECUTA BCP
+    procesarModuloBCP(hojaDatos, etiqueta, reglasCategorias);
+    //EJECUTAR ...
+
+    //******************************************************************* */
 }
 /**
  * ------------------
@@ -139,6 +147,81 @@ function procesarModuloYape(hoja, etiqueta, reglasCategorias) {
         }
     });   
 }
+/**
+ * ------------------------------------------
+ * MODULO BCP
+ * Soporta consumo de tarjeta y tranferencias
+ * ------------------------------------------
+ */
+function procesarModuloBCP(hoja, etiqueta, reglasCategorias) {
+    // ESTRATEGIA RED AMPLIA: Traemos todo lo del BCP nuevo
+    var busqueda = 'from:' + GLOBAL_CONFIG.BCP_REMITENTE + ' -label:' + GLOBAL_CONFIG.GMAIL_LABEL + ' after:' + GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+    
+    Logger.log("--- INICIANDO BÚSQUEDA BCP ---");
+    var hilos = GmailApp.search(busqueda, 0, 20);
+
+    hilos.forEach(function(hilo) {
+        // Filtro de Seguridad: Solo procesamos si el asunto dice "consumo", "transferencia" o "constancia"
+        var asunto = hilo.getFirstMessageSubject().toLowerCase();
+        
+        // Puedes agregar más palabras clave aquí si descubres nuevos tipos de correos BCP
+      
+            
+            hilo.getMessages().forEach(function(msg) {
+                var cuerpo = msg.getPlainBody();
+
+                // --------- EXTRACCIÓN DE DATOS BCP -------------------------
+                
+                // 1. Monto (BCP a veces pone "Total del consumo: S/...")
+                // Este regex busca S/ o US$ seguido de números
+                var montoObj = extraerMonto(cuerpo);
+                
+                // Si extraerMonto genérico falla, intentamos buscar "Total del consumo" específico
+                if (montoObj.monto === 0) {
+                     var matchBCP = cuerpo.match(/Total del consumo\s*(S\/|US\$)\s*([\d.]+)/);
+                     if(matchBCP) {
+                         montoObj.moneda = matchBCP[1].trim() === "$" ? "USD" : matchBCP[1].trim();
+                         montoObj.monto = parseFloat(matchBCP[2]);
+                     }
+                }
+
+                // 2. ID Operación
+                var idOperacion = extraerRegex(cuerpo, /Número de operación\s*:?\s*(\d+)/i, "SinID");
+                
+                
+                
+                // 4. Tarjeta (BCP suele mostrar "****1234")
+                // Buscamos 4 dígitos precedidos por asteriscos
+                var tarjeta = extraerRegex(cuerpo, /\*+(\d{4})/, "BCP"); 
+
+                // 5. Fecha y Hora (BCP usa formato largo: "12 de febrero de 2026...")
+                var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora.*?:?\s*(.+)/, "");
+                var fechaObj = procesarFechaBCP(fechaRaw); // Usamos un helper específico para BCP
+
+                // 6. Categoría
+                var categoria = obtenerCategoria(empresa, reglasCategorias);
+
+                // --------- CARGA DE DATOS -------------------------------
+                if (montoObj.monto > 0) {
+                    hoja.appendRow([
+                        fechaObj.fecha,
+                        fechaObj.hora,
+                        empresa,
+                        "BCP",           // Banco
+                        tarjeta,         // N° Tarjeta (Dinámico)
+                        montoObj.moneda,
+                        montoObj.monto,
+                        idOperacion,
+                        categoria
+                    ]);
+                }
+            });
+            // Marcamos procesado
+            hilo.addLabel(etiqueta);
+        }
+    });
+}
+
 /**
  * ------------------------------------------
  * HERRAMIENTAS O LOS HELPERS REUTILIZABLES
