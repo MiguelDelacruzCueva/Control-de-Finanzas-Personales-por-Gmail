@@ -15,8 +15,11 @@ const GLOBAL_CONFIG={
     //etiqueta de gmail para no repetir el correo
     GMAIL_LABEL: "PROCESADO_APP_FINANZAS",
 
-    //Datos fijo de yape por ejemplo
-    YAPE_CELULAR: "999999999"
+    //Datos YAPE
+    YAPE_CELULAR: "999999999",
+    //Datos BCP
+    BCP_REMITENTE: "notificaciones@notificacionesbcp.com.pe"
+    //Datos ...
 
 };
 /**
@@ -38,9 +41,14 @@ function ejecutarSistema(){
     }
     var reglasCategorias = cargarMapasCategorias(hojaConfig);
 
-
-    //solo yape en sus dos formatos
+//******************************************************************* */
+    //EJECUTA YAPE
     procesarModuloYape(hojaDatos,etiqueta,reglasCategorias);
+    //EJECUTA BCP
+    procesarModuloBCP(hojaDatos, etiqueta, reglasCategorias);
+    //EJECUTAR ...
+
+    //******************************************************************* */
 }
 /**
  * ------------------
@@ -139,6 +147,155 @@ function procesarModuloYape(hoja, etiqueta, reglasCategorias) {
         }
     });   
 }
+/**
+ * ------------------------------------------
+ * MODULO BCP
+ * Soporta consumo de tarjeta y tranferencias
+ * ------------------------------------------
+ */
+function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
+    var busqueda = 'from:' + GLOBAL_CONFIG.BCP_REMITENTE + ' -label:' + GLOBAL_CONFIG.GMAIL_LABEL + ' after:' + GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
+    
+    var hilos = GmailApp.search(busqueda, 0, 20);
+
+    hilos.forEach(function(hilo) {
+        var asunto = hilo.getFirstMessageSubject().toLowerCase();
+        
+        // --- 1. FILTRO DE SEGURIDAD  ---
+        if (asunto.indexOf("recibiste") > -1 || 
+            asunto.indexOf("recepción") > -1 || 
+            asunto.indexOf("abono") > -1 || 
+            asunto.indexOf("te yapearon") > -1) {
+            
+
+            hilo.addLabel(etiqueta); 
+            return; 
+        }
+
+        // --- 2. VERIFICACIÓN DOBLE DE GASTO ---
+
+        var esGasto = (asunto.indexOf("realizaste") > -1 || 
+                       asunto.indexOf("consumo") > -1 || 
+                       asunto.indexOf("transferencia") > -1 || 
+                       asunto.indexOf("pago") > -1 ||
+                       asunto.indexOf("constancia") > -1);
+
+        if (esGasto) {
+            hilo.getMessages().forEach(function(msg) {
+                var cuerpo = msg.getPlainBody();
+
+                // --- 3. FILTRO DE EMERGENCIA EN EL CUERPO ---
+                if (cuerpo.indexOf("monto recibido") > -1 || cuerpo.indexOf("recibiste un yapeo") > -1) {
+                    return; 
+                }
+
+                // --- A. EXTRACCIÓN EMPRESA ---
+                var empresa = null;
+                empresa = extraerRegex(cuerpo, /Enviado a\s*(.+)/i, null); // QR
+                if (!empresa) empresa = extraerRegex(cuerpo, /Empresa\s*:?\s*(.+)/i, null);
+                if (!empresa) empresa = extraerRegex(cuerpo, /Beneficiario\s*:?\s*(.+)/i, null);
+                if (!empresa) empresa = extraerRegex(cuerpo, /Entidad\s*:?\s*(.+)/i, null);
+                if (!empresa) empresa = extraerRegex(cuerpo, /Destinatario\s*:?\s*(.+)/i, "BCP Varios");
+                empresa = empresa.replace(/\.$/, "").trim(); 
+
+                // --- B. EXTRACCIÓN Y MAPEO TARJETA (LÓGICA SEGURA) ---
+                var tarjetaFinal = "BCP Genérica";
+                
+                
+                var matchCuenta = cuerpo.match(/(?:Desde|Cuenta|Tarjeta|Cargo).*?(\*{4}\s*\d{4})/i);
+                
+                if (matchCuenta) {
+                   
+                    var digitosEncontrados = matchCuenta[1].replace(/\D/g, ''); 
+                    
+                    // BUSCAMOS EN LA HOJA CONFIG 
+                    if (mapaConfiguracion[digitosEncontrados]) {
+                        tarjetaFinal = "****" + mapaConfiguracion[digitosEncontrados];
+                    } else {
+                        tarjetaFinal = "****" + digitosEncontrados;
+                    }
+                }
+
+                // --- C. EXTRACCIÓN MONTO ---
+                var montoObj = extraerMonto(cuerpo);
+                if (montoObj.monto === 0) {
+                     var matchBCP = cuerpo.match(/(?:Total|Monto enviado).*?(S\/|US\$)\s*([\d.]+)/i);
+                     if(matchBCP) {
+                         montoObj.moneda = matchBCP[1].trim() === "$" ? "USD" : matchBCP[1].trim();
+                         montoObj.monto = parseFloat(matchBCP[2]);
+                     }
+                }
+
+                // --- D. ID Y FECHA ---
+                var idOperacion = extraerRegex(cuerpo, /Número de operación[\s\S]{0,30}?(\d{6,})/i, "SinID");
+                var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora.*?:?\s*(.+)/, "");
+                var fechaObj = procesarFechaBCP(fechaRaw);
+
+                // --- E. CATEGORÍA ---
+                var categoria = obtenerCategoria(empresa, mapaConfiguracion);
+
+                // --- GUARDADO ---
+                if (montoObj.monto > 0) {
+                    hoja.appendRow([
+                        fechaObj.fecha,
+                        fechaObj.hora,
+                        empresa,
+                        "BCP",
+                        tarjetaFinal,
+                        montoObj.moneda,
+                        montoObj.monto,
+                        idOperacion,
+                        categoria
+                    ]);
+                }
+            });
+            hilo.addLabel(etiqueta);
+        }
+    });
+}
+
+/**
+ * --------------------------------------------------------------
+ * HELPER FECHA BCP
+ * Convierte: "11 de febrero de 2026 - 02:56 PM" -> Date Object
+ * --------------------------------------------------------------
+ */
+function procesarFechaBCP(texto) {
+    var resultado = {fecha: new Date(), hora: "00:00"};
+    
+    // BCP usa nombres completos en español
+    var meses = {
+        "enero":0, "febrero":1, "marzo":2, "abril":3, "mayo":4, "junio":5, 
+        "julio":6, "agosto":7, "septiembre":8, "octubre":9, "noviembre":10, "diciembre":11
+    };
+
+    try {
+        // Regex para: (11) de (febrero) de (2026) [- ó nada] (02):(56) (PM)
+        var partes = texto.match(/(\d+)\s+de\s+([a-zA-Z]+)\s+de\s+(\d+).*?(\d+):(\d+)\s+(AM|PM)/i);
+        
+        if (partes) {
+            var dia = parseInt(partes[1]);
+            var mes = meses[partes[2].toLowerCase()];
+            var anio = parseInt(partes[3]);
+            var hora = parseInt(partes[4]);
+            var min = parseInt(partes[5]);
+            var ampm = partes[6].toUpperCase();
+
+            // Conversión 12h -> 24h
+            var hora24 = hora;
+            if (ampm === "PM" && hora < 12) hora24 += 12;
+            if (ampm === "AM" && hora === 12) hora24 = 0;
+
+            resultado.fecha = new Date(anio, mes, dia, hora24, min);
+            var horaStr = (hora24 < 10 ? "0" + hora24 : hora24) + ":" + (min < 10 ? "0" + min : min);
+            resultado.hora = horaStr;
+        }
+    } catch(e) {
+        Logger.log("ERROR FECHA BCP (" + texto + "): " + e);
+    }
+    return resultado;
+}
+
 /**
  * ------------------------------------------
  * HERRAMIENTAS O LOS HELPERS REUTILIZABLES
