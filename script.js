@@ -161,20 +161,33 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
     hilos.forEach(function(hilo) {
         var asunto = hilo.getFirstMessageSubject().toLowerCase();
         
-        // 1. FILTRO ANTI-INGRESOS
-        if (asunto.indexOf("recibiste") > -1 || asunto.indexOf("abono") > -1 || asunto.indexOf("te yapearon") > -1) {
+        // --- 1. FILTRO DE SEGURIDAD  ---
+        if (asunto.indexOf("recibiste") > -1 || 
+            asunto.indexOf("recepción") > -1 || 
+            asunto.indexOf("abono") > -1 || 
+            asunto.indexOf("te yapearon") > -1) {
+            
+
             hilo.addLabel(etiqueta); 
             return; 
         }
 
-        // 2. FILTRO SOLO GASTOS
-        var esGasto = (asunto.indexOf("realizaste") > -1 || asunto.indexOf("consumo") > -1 || 
-                       asunto.indexOf("transferencia") > -1 || asunto.indexOf("pago") > -1 ||
+        // --- 2. VERIFICACIÓN DOBLE DE GASTO ---
+
+        var esGasto = (asunto.indexOf("realizaste") > -1 || 
+                       asunto.indexOf("consumo") > -1 || 
+                       asunto.indexOf("transferencia") > -1 || 
+                       asunto.indexOf("pago") > -1 ||
                        asunto.indexOf("constancia") > -1);
 
         if (esGasto) {
             hilo.getMessages().forEach(function(msg) {
                 var cuerpo = msg.getPlainBody();
+
+                // --- 3. FILTRO DE EMERGENCIA EN EL CUERPO ---
+                if (cuerpo.indexOf("monto recibido") > -1 || cuerpo.indexOf("recibiste un yapeo") > -1) {
+                    return; 
+                }
 
                 // --- A. EXTRACCIÓN EMPRESA ---
                 var empresa = null;
@@ -188,19 +201,17 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 // --- B. EXTRACCIÓN Y MAPEO TARJETA (LÓGICA SEGURA) ---
                 var tarjetaFinal = "BCP Genérica";
                 
-                // Buscamos 4 dígitos asociados a cuenta/tarjeta
+                
                 var matchCuenta = cuerpo.match(/(?:Desde|Cuenta|Tarjeta|Cargo).*?(\*{4}\s*\d{4})/i);
                 
                 if (matchCuenta) {
-                    // Obtenemos solo los números (ej: "1057")
+                   
                     var digitosEncontrados = matchCuenta[1].replace(/\D/g, ''); 
                     
-                    // BUSCAMOS EN LA HOJA CONFIG (mapaConfiguracion)
-                    // Si en tu Excel pusiste 1057 en Columna A, aquí te devolverá 3111 (Columna B)
+                    // BUSCAMOS EN LA HOJA CONFIG 
                     if (mapaConfiguracion[digitosEncontrados]) {
                         tarjetaFinal = "****" + mapaConfiguracion[digitosEncontrados];
                     } else {
-                        // Si no está en el Excel, usamos lo que encontramos
                         tarjetaFinal = "****" + digitosEncontrados;
                     }
                 }
@@ -221,7 +232,6 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 var fechaObj = procesarFechaBCP(fechaRaw);
 
                 // --- E. CATEGORÍA ---
-                // Reutilizamos el mismo mapaConfiguracion para buscar categorías
                 var categoria = obtenerCategoria(empresa, mapaConfiguracion);
 
                 // --- GUARDADO ---
@@ -245,8 +255,10 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
 }
 
 /**
+ * --------------------------------------------------------------
  * HELPER FECHA BCP
  * Convierte: "11 de febrero de 2026 - 02:56 PM" -> Date Object
+ * --------------------------------------------------------------
  */
 function procesarFechaBCP(texto) {
     var resultado = {fecha: new Date(), hora: "00:00"};
