@@ -153,62 +153,85 @@ function procesarModuloYape(hoja, etiqueta, reglasCategorias) {
  * Soporta consumo de tarjeta y tranferencias
  * ------------------------------------------
  */
-function procesarModuloBCP(hoja, etiqueta, reglasCategorias) {
-    // ESTRATEGIA RED AMPLIA: Traemos todo lo del BCP nuevo
+function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
     var busqueda = 'from:' + GLOBAL_CONFIG.BCP_REMITENTE + ' -label:' + GLOBAL_CONFIG.GMAIL_LABEL + ' after:' + GLOBAL_CONFIG.FECHA_MINIMA_BUSQUEDA;
     
-    Logger.log("--- INICIANDO BÚSQUEDA BCP ---");
     var hilos = GmailApp.search(busqueda, 0, 20);
 
     hilos.forEach(function(hilo) {
-        // Filtro de Seguridad: Solo procesamos si el asunto dice "consumo", "transferencia" o "constancia"
         var asunto = hilo.getFirstMessageSubject().toLowerCase();
         
-        // Puedes agregar más palabras clave aquí si descubres nuevos tipos de correos BCP
-      
-            
+        // 1. FILTRO ANTI-INGRESOS
+        if (asunto.indexOf("recibiste") > -1 || asunto.indexOf("abono") > -1 || asunto.indexOf("te yapearon") > -1) {
+            hilo.addLabel(etiqueta); 
+            return; 
+        }
+
+        // 2. FILTRO SOLO GASTOS
+        var esGasto = (asunto.indexOf("realizaste") > -1 || asunto.indexOf("consumo") > -1 || 
+                       asunto.indexOf("transferencia") > -1 || asunto.indexOf("pago") > -1 ||
+                       asunto.indexOf("constancia") > -1);
+
+        if (esGasto) {
             hilo.getMessages().forEach(function(msg) {
                 var cuerpo = msg.getPlainBody();
 
-                // --------- EXTRACCIÓN DE DATOS BCP -------------------------
+                // --- A. EXTRACCIÓN EMPRESA ---
+                var empresa = null;
+                empresa = extraerRegex(cuerpo, /Enviado a\s*(.+)/i, null); // QR
+                if (!empresa) empresa = extraerRegex(cuerpo, /Empresa\s*:?\s*(.+)/i, null);
+                if (!empresa) empresa = extraerRegex(cuerpo, /Beneficiario\s*:?\s*(.+)/i, null);
+                if (!empresa) empresa = extraerRegex(cuerpo, /Entidad\s*:?\s*(.+)/i, null);
+                if (!empresa) empresa = extraerRegex(cuerpo, /Destinatario\s*:?\s*(.+)/i, "BCP Varios");
+                empresa = empresa.replace(/\.$/, "").trim(); 
+
+                // --- B. EXTRACCIÓN Y MAPEO TARJETA (LÓGICA SEGURA) ---
+                var tarjetaFinal = "BCP Genérica";
                 
-                // 1. Monto (BCP a veces pone "Total del consumo: S/...")
-                // Este regex busca S/ o US$ seguido de números
+                // Buscamos 4 dígitos asociados a cuenta/tarjeta
+                var matchCuenta = cuerpo.match(/(?:Desde|Cuenta|Tarjeta|Cargo).*?(\*{4}\s*\d{4})/i);
+                
+                if (matchCuenta) {
+                    // Obtenemos solo los números (ej: "1057")
+                    var digitosEncontrados = matchCuenta[1].replace(/\D/g, ''); 
+                    
+                    // BUSCAMOS EN LA HOJA CONFIG (mapaConfiguracion)
+                    // Si en tu Excel pusiste 1057 en Columna A, aquí te devolverá 3111 (Columna B)
+                    if (mapaConfiguracion[digitosEncontrados]) {
+                        tarjetaFinal = "****" + mapaConfiguracion[digitosEncontrados];
+                    } else {
+                        // Si no está en el Excel, usamos lo que encontramos
+                        tarjetaFinal = "****" + digitosEncontrados;
+                    }
+                }
+
+                // --- C. EXTRACCIÓN MONTO ---
                 var montoObj = extraerMonto(cuerpo);
-                
-                // Si extraerMonto genérico falla, intentamos buscar "Total del consumo" específico
                 if (montoObj.monto === 0) {
-                     var matchBCP = cuerpo.match(/Total del consumo\s*(S\/|US\$)\s*([\d.]+)/);
+                     var matchBCP = cuerpo.match(/(?:Total|Monto enviado).*?(S\/|US\$)\s*([\d.]+)/i);
                      if(matchBCP) {
                          montoObj.moneda = matchBCP[1].trim() === "$" ? "USD" : matchBCP[1].trim();
                          montoObj.monto = parseFloat(matchBCP[2]);
                      }
                 }
 
-                // 2. ID Operación
-                var idOperacion = extraerRegex(cuerpo, /Número de operación\s*:?\s*(\d+)/i, "SinID");
-                
-                
-                
-                // 4. Tarjeta (BCP suele mostrar "****1234")
-                // Buscamos 4 dígitos precedidos por asteriscos
-                var tarjeta = extraerRegex(cuerpo, /\*+(\d{4})/, "BCP"); 
-
-                // 5. Fecha y Hora (BCP usa formato largo: "12 de febrero de 2026...")
+                // --- D. ID Y FECHA ---
+                var idOperacion = extraerRegex(cuerpo, /Número de operación[\s\S]{0,30}?(\d{6,})/i, "SinID");
                 var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora.*?:?\s*(.+)/, "");
-                var fechaObj = procesarFechaBCP(fechaRaw); // Usamos un helper específico para BCP
+                var fechaObj = procesarFechaBCP(fechaRaw);
 
-                // 6. Categoría
-                var categoria = obtenerCategoria(empresa, reglasCategorias);
+                // --- E. CATEGORÍA ---
+                // Reutilizamos el mismo mapaConfiguracion para buscar categorías
+                var categoria = obtenerCategoria(empresa, mapaConfiguracion);
 
-                // --------- CARGA DE DATOS -------------------------------
+                // --- GUARDADO ---
                 if (montoObj.monto > 0) {
                     hoja.appendRow([
                         fechaObj.fecha,
                         fechaObj.hora,
                         empresa,
-                        "BCP",           // Banco
-                        tarjeta,         // N° Tarjeta (Dinámico)
+                        "BCP",
+                        tarjetaFinal,
                         montoObj.moneda,
                         montoObj.monto,
                         idOperacion,
@@ -216,10 +239,49 @@ function procesarModuloBCP(hoja, etiqueta, reglasCategorias) {
                     ]);
                 }
             });
-            // Marcamos procesado
             hilo.addLabel(etiqueta);
         }
     });
+}
+
+/**
+ * HELPER FECHA BCP
+ * Convierte: "11 de febrero de 2026 - 02:56 PM" -> Date Object
+ */
+function procesarFechaBCP(texto) {
+    var resultado = {fecha: new Date(), hora: "00:00"};
+    
+    // BCP usa nombres completos en español
+    var meses = {
+        "enero":0, "febrero":1, "marzo":2, "abril":3, "mayo":4, "junio":5, 
+        "julio":6, "agosto":7, "septiembre":8, "octubre":9, "noviembre":10, "diciembre":11
+    };
+
+    try {
+        // Regex para: (11) de (febrero) de (2026) [- ó nada] (02):(56) (PM)
+        var partes = texto.match(/(\d+)\s+de\s+([a-zA-Z]+)\s+de\s+(\d+).*?(\d+):(\d+)\s+(AM|PM)/i);
+        
+        if (partes) {
+            var dia = parseInt(partes[1]);
+            var mes = meses[partes[2].toLowerCase()];
+            var anio = parseInt(partes[3]);
+            var hora = parseInt(partes[4]);
+            var min = parseInt(partes[5]);
+            var ampm = partes[6].toUpperCase();
+
+            // Conversión 12h -> 24h
+            var hora24 = hora;
+            if (ampm === "PM" && hora < 12) hora24 += 12;
+            if (ampm === "AM" && hora === 12) hora24 = 0;
+
+            resultado.fecha = new Date(anio, mes, dia, hora24, min);
+            var horaStr = (hora24 < 10 ? "0" + hora24 : hora24) + ":" + (min < 10 ? "0" + min : min);
+            resultado.hora = horaStr;
+        }
+    } catch(e) {
+        Logger.log("ERROR FECHA BCP (" + texto + "): " + e);
+    }
+    return resultado;
 }
 
 /**
