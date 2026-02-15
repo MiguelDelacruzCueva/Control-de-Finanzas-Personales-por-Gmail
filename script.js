@@ -393,5 +393,25 @@ function obtenerEtiqueta(nombre) {
  * ==================================================================
  */
 function instalarSistemaManual() {
-    
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var hojaConfig = ss.getSheetByName(GLOBAL_CONFIG.HOJA_CONFIG);
+  
+  if (!hojaConfig) {
+    Browser.msgBox("Error: Primero crea la hoja CONFIG.");
+    return;
+  }
+  // 1. Obtener Categorías de tu Excel para ponerlas en el Form
+  // Asumimos que están en la Columna B de CONFIG (desde fila 2)
+  var rangos = hojaConfig.getRange(2, 2, hojaConfig.getLastRow() - 1, 1).getValues();
+  var categorias = rangos.flat().filter(String); // Limpiar vacíos
+  // Quitamos duplicados por si acaso
+  categorias = [...new Set(categorias)];
+  
+  if (categorias.length === 0) categorias = ["Comida", "Transporte", "Varios"]; // Default
+
+  // 2. Crear el Formulario
+  var form = FormApp.create('Gastos Rápidos (Manual)');
+  
+
+
 }
