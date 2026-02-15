@@ -423,6 +423,11 @@ function instalarSistemaManual() {
   itemMonto.setValidation(textValidation);
   // Pregunta 2: Empresa / Detalle
   form.addTextItem().setTitle('¿En qué gastaste? (Empresa/Detalle)').setRequired(true);
+  // Pregunta 3: Categoría (Lista desplegable cargada desde Excel)
+  form.addListItem()
+      .setTitle('Categoría')
+      .setChoiceValues(categorias)
+      .setRequired(true);
 
 
 }
