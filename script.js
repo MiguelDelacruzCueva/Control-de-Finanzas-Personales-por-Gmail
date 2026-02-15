@@ -421,6 +421,8 @@ function instalarSistemaManual() {
     .requireNumber()
     .build();
   itemMonto.setValidation(textValidation);
+  // Pregunta 2: Empresa / Detalle
+  form.addTextItem().setTitle('¿En qué gastaste? (Empresa/Detalle)').setRequired(true);
 
 
 }
