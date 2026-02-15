@@ -411,7 +411,16 @@ function instalarSistemaManual() {
 
   // 2. Crear el Formulario
   var form = FormApp.create('Gastos Rápidos (Manual)');
-  
+   // Pregunta 1: Monto
+  var itemMonto = form.addTextItem();
+  itemMonto.setTitle('Monto (S/)');
+  itemMonto.setRequired(true);
+  // Validación: Que sea número
+  var textValidation = FormApp.createTextValidation()
+    .setHelpText('Por favor ingresa un número válido.')
+    .requireNumber()
+    .build();
+  itemMonto.setValidation(textValidation);
 
 
 }
