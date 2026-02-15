@@ -167,13 +167,11 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
             asunto.indexOf("abono") > -1 || 
             asunto.indexOf("te yapearon") > -1) {
             
-
             hilo.addLabel(etiqueta); 
             return; 
         }
 
         // --- 2. VERIFICACIÓN DOBLE DE GASTO ---
-
         var esGasto = (asunto.indexOf("realizaste") > -1 || 
                        asunto.indexOf("consumo") > -1 || 
                        asunto.indexOf("transferencia") > -1 || 
@@ -183,7 +181,6 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
         if (esGasto) {
             hilo.getMessages().forEach(function(msg) {
                 var cuerpo = msg.getPlainBody();
-
                 // --- 3. FILTRO DE EMERGENCIA EN EL CUERPO ---
                 if (cuerpo.indexOf("monto recibido") > -1 || cuerpo.indexOf("recibiste un yapeo") > -1) {
                     return; 
@@ -201,9 +198,7 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 // --- B. EXTRACCIÓN Y MAPEO TARJETA (LÓGICA SEGURA) ---
                 var tarjetaFinal = "BCP Genérica";
                 
-                
                 var matchCuenta = cuerpo.match(/(?:Desde|Cuenta|Tarjeta|Cargo).*?(\*{4}\s*\d{4})/i);
-                
                 if (matchCuenta) {
                    
                     var digitosEncontrados = matchCuenta[1].replace(/\D/g, ''); 
@@ -234,7 +229,7 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 // --- E. CATEGORÍA ---
                 var categoria = obtenerCategoria(empresa, mapaConfiguracion);
 
-                // --- GUARDADO ---
+                // --- GUARDAMOS DATOS ---
                 if (montoObj.monto > 0) {
                     hoja.appendRow([
                         fechaObj.fecha,
@@ -298,7 +293,7 @@ function procesarFechaBCP(texto) {
 
 /**
  * ------------------------------------------
- * HERRAMIENTAS O LOS HELPERS REUTILIZABLES
+ * HELPERS FECHA YAPE 
  * -----------------------------------------
  * Parsea la fecha de Yape: "30 Ene. 2026 - 01:56 pm" a objetos separados
  */
@@ -334,6 +329,10 @@ try{
 }
 return resultado;
 }
+/**
+ * 
+ * HERRAMIENTAS 
+ */
 // Cargar la hoja CONFIG en memoria para buscar rapido
 function cargarMapasCategorias(hoja){
     var mapa = {};
@@ -385,4 +384,14 @@ function obtenerEtiqueta(nombre) {
         Logger.log("Error etiqueta: "+e);
         return null;
     }
+}
+
+/**
+ * ==================================================================
+ * SECCIÓN DE INSTALACIÓN AUTOMÁTICA (SETUP)
+ * Ejecuta esto UNA VEZ para crear el Formulario y vincularlo solo.
+ * ==================================================================
+ */
+function instalarSistemaManual() {
+    
 }
