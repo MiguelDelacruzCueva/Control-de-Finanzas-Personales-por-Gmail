@@ -117,12 +117,14 @@ function procesarModuloYape(hoja, etiqueta, reglasCategorias) {
                 // 5. Fecha
                 var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora.*?:?\s*(.+)/, "");
                 var fechaObj = procesarFechaYape(fechaRaw);
+                var nombreMes = obtenerNombreMes(fechaObj.fecha);
 
                 // --------- CARGA DE DATOS -------------------------------
                 // Solo guardamos si encontramos un monto válido (> 0)
                 if (montoObj.monto > 0) {
                     hoja.appendRow([
                         fechaObj.fecha,
+                        nombreMes,
                         fechaObj.hora,
                         empresa,
                         "YAPE",
@@ -226,6 +228,7 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 var idOperacion = extraerRegex(cuerpo, /Número de operación[\s\S]{0,30}?(\d{6,})/i, "SinID");
                 var fechaRaw = extraerRegex(cuerpo, /Fecha y [Hh]ora.*?:?\s*(.+)/, "");
                 var fechaObj = procesarFechaBCP(fechaRaw);
+                var nombreMes = obtenerNombreMes(fechaObj.fecha);
 
                 // --- E. CATEGORÍA ---
                 var categoria = obtenerCategoria(empresa, mapaConfiguracion);
@@ -234,6 +237,7 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 if (montoObj.monto > 0) {
                     hoja.appendRow([
                         fechaObj.fecha,
+                        nombreMes,
                         fechaObj.hora,
                         empresa,
                         "BCP",
@@ -331,9 +335,8 @@ try{
 return resultado;
 }
 
-/**--------------------------------
- * HERRAMIENTAS 
- * --------------------------------
+/**
+ * 
  */
 // Cargar la hoja CONFIG en memoria para buscar rapido
 function cargarMapasCategorias(hoja){
@@ -386,6 +389,14 @@ function obtenerEtiqueta(nombre) {
         return null;
     }
 }
+// Convierte fecha objeto a nombre de mes (ej: "Febrero")
+function obtenerNombreMes(fecha) {
+  var meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  return meses[fecha.getMonth()];
+}
 /**
- * 
+ * -----------------------------------------
+ * MEJORAS DE INTERFAZ
+ * Genera menús y validaciones automáticas
+ * -----------------------------------------
  */
