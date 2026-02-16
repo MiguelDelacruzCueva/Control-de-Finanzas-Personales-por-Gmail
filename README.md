@@ -1,113 +1,77 @@
-# Control-de-Finanzas-Personales-por-Gmail
-lee las notificaciones del correo donde llegan los recibos de un uso de tarjeta o alguna cuenta bancaria y los registra en una base de datos , en donde ayuda a ver de una mejor manera los pagos echos en cada cuenta y de esa manera llevar un mejor control de finanzas. Los medios actualizados que puede registrar son de :
-|  YAPE  |  BCP  |
+# Control de Finanzas Personales (Gmail a Google Sheets)
+
+Este proyecto permite automatizar la gestión de finanzas personales mediante la lectura y extracción de datos de notificaciones bancarias enviadas por correo electrónico. El sistema identifica transacciones, procesa la información relevante y la consolida en una base de datos estructurada en Google Sheets.
+
+### Entidades Soportadas Actualmente
+| Servicio | Entidad |
+| :--- | :--- |
+| **Billeteras Digitales** | YAPE |
+| **Banca** | BCP |
+
+---
 
 ## Características Principales
 
-    100% Automatizado: Se ejecuta en segundo plano mediante Triggers de tiempo (cada 5 min).
+* **Automatización Total:** Ejecución programada en segundo plano mediante Google Apps Script Triggers.
+* **Arquitectura Modular:** Código diseñado para facilitar la integración de nuevas instituciones bancarias de forma ágil.
+* **Categorización Inteligente:** Clasificación automática de gastos (Comida, Transporte, Servicios, etc.) basada en una tabla de configuración editable.
+* **Detección de Duplicados:** Implementación de etiquetas en Gmail (`GASTO_REGISTRADO`) para asegurar que cada transacción se procese una sola vez.
+* **Gestión Multidivisa:** Detección automática de moneda local (PEN) y moneda extranjera (USD).
+* **Privacidad y Seguridad:** El script se ejecuta exclusivamente en el entorno de Google del usuario; los datos financieros nunca salen de su cuenta privada.
 
-    Multibanco: Código modular y escalable, diseñado para la integración ágil de nuevos bancos.
+---
 
-    Categorización Inteligente: Asigna categorías (Comida, Transporte, Servicios) basándose en una hoja de configuración editable por el usuario.
+## Arquitectura Técnica (Flujo ETL)
 
-    Detección de Duplicados: Utiliza etiquetas de Gmail para asegurar que cada transacción se registre una única vez.
+El sistema opera bajo un flujo de procesamiento de datos estructurado:
 
-    Manejo de Divisas: Detecta y registra automáticamente si la compra fue en Soles (PEN) o Dólares (USD).
+1.  **Extract (Extracción):** El script busca hilos de correo no leídos que coincidan con los remitentes y asuntos oficiales de los bancos configurados.
+2.  **Transform (Transformación):**
+    * Parseo del cuerpo del mensaje (HTML/Texto) mediante expresiones regulares (**Regex**).
+    * Normalización de fechas y estandarización de formatos numéricos.
+    * Cruce de información con la hoja de configuración para asignación de categorías.
+3.  **Load (Carga):** Los datos estructurados se insertan en la hoja de registro final.
+4.  **Mark (Marcado):** Se etiqueta el correo procesado para excluirlo de futuras ejecuciones.
 
-    Privacidad Total: El código se ejecuta en la cuenta de Google del usuario. Los datos financieros nunca salen de su entorno privado.
+---
 
-## Arquitectura Técnica
+## Configuración del Entorno
 
-El flujo de datos sigue el siguiente proceso:
+### 1. Preparación de la Hoja de Cálculo
+Cree un archivo de Google Sheets con las siguientes dos pestañas y sus respectivos encabezados en la fila 1:
 
-    Extract (Extracción): El script busca en Gmail hilos no leídos que coincidan con los patrones de los bancos (remitente y asunto).
+**Pestaña: `DATA`** (Registro de movimientos)
+`FECHA | EMPRESA | CATEGORÍA | BANCO | N° TARJETA | MONEDA | MONTO | ID OPERACIÓN`
 
-    Transform (Transformación):
+**Pestaña: `CONFIG`** (Reglas de negocio)
+`PALABRA CLAVE | CATEGORÍA ASIGNADA`
 
-        - Se parsea el cuerpo del correo (HTML/Text) usando Regex.
+> **Nota:** En la columna "Palabra Clave" puede definir comercios específicos (ej. Netflix, Uber) o números de cuenta/tarjeta para una identificación precisa del origen del gasto.
 
-        - Se normalizan fechas (de texto natural a objetos Date).
+### 2. Instalación del Script
+1.  En su Google Sheet, navegue a **Extensiones** > **Apps Script**.
+2.  Copie el contenido del archivo `code.gs` incluido en este repositorio.
+3.  Reemplace cualquier código existente en el editor de Apps Script con el código copiado y guarde el proyecto.
+4.  **Autorización:** Al ejecutar el script por primera vez, Google solicitará permisos de acceso a Gmail y Sheets. Este es un paso estándar de seguridad de Google Apps Script.
 
-        - Se limpian montos y se estandarizan monedas.
+### 3. Automatización (Activadores)
+Para que el proceso sea 100% autónomo, configure un activador (Trigger):
+1.  Dentro de Apps Script, haga clic en el icono de **Activadores** (reloj).
+2.  Seleccione **Añadir activador**.
+3.  Configure:
+    * **Función a ejecutar:** `ejecutarSistemaFinanzas`
+    * **Fuente de evento:** `Según tiempo`
+    * **Tipo de activador:** `Temporizador por minutos`
+    * **Intervalo:** Se recomienda cada 15 o 30 minutos.
 
-        - Se consulta la hoja CONFIG para asignar una categoría.
+---
 
-    Load (Carga): Los datos estructurados se insertan en la hoja REGISTRO.
+## Contribuciones y Escalabilidad
 
-    Mark (Marcado): Se aplica una etiqueta en Gmail (GASTO_REGISTRADO) para excluir el correo de futuros procesos.
+El diseño modular permite extender el soporte a otros bancos fácilmente. Para agregar una nueva entidad, se recomienda seguir este patrón:
 
-## Pre-requisitos
+1.  Replicar la lógica de la función `procesarBCP`.
+2.  Adaptar las expresiones regulares a los patrones específicos del nuevo banco.
+3.  Incluir la llamada a la nueva función dentro de la rutina principal `ejecutarSistemaFinanzas`.
 
-    Una cuenta de Google (Gmail + Google Sheets).
-
-    Recibir notificaciones de consumo de tus bancos por correo electrónico.
-
-## Instalación y Configuración
-
-Sigue estos pasos para desplegar el proyecto en tu cuenta:
-1. Preparar la Hoja de Cálculo
-
-Crea un nuevo Google Sheet y configura dos pestañas:
-
-Hoja 1: DATA (Aquí se guardarán los datos).
-    Encabezados en la Fila 1:
-    FECHA | EMPRESA | CATEGORÍA | BANCO | N° TARJETA | MONEDA | MONTO | ID OPERACIÓN
-<img width="799" height="332" alt="imagen" src="https://github.com/user-attachments/assets/009aef0c-80ff-4608-afcb-f66044f9e7a2" />
-
-
-Hoja 2: CONFIG (Aquí definirás tus reglas).
-    Encabezados en la Fila 1:
-    PALABRA CLAVE | CATEGORÍA ASIGNADA
-    Ejemplos (Fila 2 en adelante):
-    Uber | Transporte
-    Rappi | Comida
-    Netflix | Suscripciones
-    Numero de cuenta | numero de su tarjeta
-Esto ultimo se agrego porque se detecto que algunos bancos tambien suelen poner el numero de cuenta con le que se pago en vez de la tarjeta, lo cual evitara pensar que son diferentes cuentas 
-<img width="351" height="145" alt="imagen" src="https://github.com/user-attachments/assets/464e0187-91bd-4565-8aec-fee04d9d580c" />
-
-
-2. Instalar el Script
-   DATO: Es probable que aparezca una alerta de autorización al abrir Apps Script. Este es un paso de seguridad nativo de Google para otorgar permisos a la extensión; su uso     es completamente seguro. 
-
-    En tu Google Sheet, ve a Extensiones > Apps Script.
-   <img width="582" height="96" alt="imagen" src="https://github.com/user-attachments/assets/bd4191f0-69a1-4d64-9395-225ec64738d0" />
-
-
-    Copia el contenido del archivo code.gs de este repositorio.
-
-    Pega el código en el editor.
-   <img width="1002" height="576" alt="imagen" src="https://github.com/user-attachments/assets/bff1595d-961a-4417-bf5f-ed9694d5fe10" />
-
-
-
-
-4. Configurar el Trigger (Automatización)
-
-    En el panel izquierdo de Apps Script, ve a Activadores (Reloj).
-
-    Añadir activador:
-
-    Función: ejecutarSistemaFinanzas
-
-    Fuente: Según tiempo
-
-    Tipo: Por minutos (Cada 15 o 30 minutos).
-
-    Guarda y autoriza los permisos de Gmail y Sheets.
-   <img width="1354" height="494" alt="imagen" src="https://github.com/user-attachments/assets/f241c482-4328-4ebd-8ef0-ebc697268320" />
-
-
-
-## Contribuciones (Cómo agregar más bancos)
-
-El código es modular. Para agregar un nuevo banco, sientete libre de implementar, por ejemplo: 
-
-    Copia la función procesarBCP.
-
-    Renómbrala a procesarInterbank.
-
-    Ajusta las Regex para que coincidan con el formato del correo de Interbank.
-
-    Agrega la llamada a la función principal ejecutarSistemaFinanzas.
-Siéntete libre de usarlo y modificarlo para tus propias finanzas.
+---
