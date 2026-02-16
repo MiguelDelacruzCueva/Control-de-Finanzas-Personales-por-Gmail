@@ -76,8 +76,8 @@ function procesarModuloYape(hoja, etiqueta, reglasCategorias) {
         // Obtenemos el asunto del hilo para validar si nos interesa
         var asunto = hilo.getFirstMessageSubject();
         
-        // 2. FILTRO EN JAVASCRIPT (INFALIBLE)
-        // Verificamos si el asunto contiene las palabras clave
+        // 2. FILTRO EN JAVASCRIPT 
+        // verificamos si el asunto contiene las palabras clave
         var esServicio = asunto.indexOf("servicio ha sido confirmado") > -1;
         var esTransferencia = asunto.indexOf("Por tu seguridad") > -1;
 
@@ -170,7 +170,6 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
             hilo.addLabel(etiqueta); 
             return; 
         }
-
         // --- 2. VERIFICACIÓN DOBLE DE GASTO ---
         var esGasto = (asunto.indexOf("realizaste") > -1 || 
                        asunto.indexOf("consumo") > -1 || 
@@ -181,6 +180,7 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
         if (esGasto) {
             hilo.getMessages().forEach(function(msg) {
                 var cuerpo = msg.getPlainBody();
+
                 // --- 3. FILTRO DE EMERGENCIA EN EL CUERPO ---
                 if (cuerpo.indexOf("monto recibido") > -1 || cuerpo.indexOf("recibiste un yapeo") > -1) {
                     return; 
@@ -195,10 +195,11 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 if (!empresa) empresa = extraerRegex(cuerpo, /Destinatario\s*:?\s*(.+)/i, "BCP Varios");
                 empresa = empresa.replace(/\.$/, "").trim(); 
 
-                // --- B. EXTRACCIÓN Y MAPEO TARJETA (LÓGICA SEGURA) ---
+                // --- B. EXTRACCIÓN Y MAPEO TARJETA  ---
                 var tarjetaFinal = "BCP Genérica";
                 
                 var matchCuenta = cuerpo.match(/(?:Desde|Cuenta|Tarjeta|Cargo).*?(\*{4}\s*\d{4})/i);
+                
                 if (matchCuenta) {
                    
                     var digitosEncontrados = matchCuenta[1].replace(/\D/g, ''); 
@@ -229,7 +230,7 @@ function procesarModuloBCP(hoja, etiqueta, mapaConfiguracion) {
                 // --- E. CATEGORÍA ---
                 var categoria = obtenerCategoria(empresa, mapaConfiguracion);
 
-                // --- GUARDAMOS DATOS ---
+                // --- GUARDADO ---
                 if (montoObj.monto > 0) {
                     hoja.appendRow([
                         fechaObj.fecha,
@@ -293,9 +294,9 @@ function procesarFechaBCP(texto) {
 
 /**
  * ------------------------------------------
- * HELPERS FECHA YAPE 
- * -----------------------------------------
+ * HELPER FECHA YAPE
  * Parsea la fecha de Yape: "30 Ene. 2026 - 01:56 pm" a objetos separados
+ * -----------------------------------------
  */
 function procesarFechaYape(texto){
 var resultado = {fecha: new Date(), hora: "00:00"};
@@ -329,9 +330,10 @@ try{
 }
 return resultado;
 }
-/**
- * 
+
+/**--------------------------------
  * HERRAMIENTAS 
+ * --------------------------------
  */
 // Cargar la hoja CONFIG en memoria para buscar rapido
 function cargarMapasCategorias(hoja){
@@ -347,7 +349,6 @@ function cargarMapasCategorias(hoja){
     }
     return mapa;
 }
- 
 function obtenerCategoria (empresa,mapa){
     empresa = empresa.toLowerCase();
     //buscamos si alguna palabra esta dentro del nombre de la empresa
@@ -385,49 +386,6 @@ function obtenerEtiqueta(nombre) {
         return null;
     }
 }
-
 /**
- * ==================================================================
- * SECCIÓN DE INSTALACIÓN AUTOMÁTICA (SETUP)
- * Ejecuta esto UNA VEZ para crear el Formulario y vincularlo solo.
- * ==================================================================
+ * 
  */
-function instalarSistemaManual() {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var hojaConfig = ss.getSheetByName(GLOBAL_CONFIG.HOJA_CONFIG);
-  
-  if (!hojaConfig) {
-    Browser.msgBox("Error: Primero crea la hoja CONFIG.");
-    return;
-  }
-  // 1. Obtener Categorías de tu Excel para ponerlas en el Form
-  // Asumimos que están en la Columna B de CONFIG (desde fila 2)
-  var rangos = hojaConfig.getRange(2, 2, hojaConfig.getLastRow() - 1, 1).getValues();
-  var categorias = rangos.flat().filter(String); // Limpiar vacíos
-  // Quitamos duplicados por si acaso
-  categorias = [...new Set(categorias)];
-  
-  if (categorias.length === 0) categorias = ["Comida", "Transporte", "Varios"]; // Default
-
-  // 2. Crear el Formulario
-  var form = FormApp.create('Gastos Rápidos (Manual)');
-   // Pregunta 1: Monto
-  var itemMonto = form.addTextItem();
-  itemMonto.setTitle('Monto (S/)');
-  itemMonto.setRequired(true);
-  // Validación: Que sea número
-  var textValidation = FormApp.createTextValidation()
-    .setHelpText('Por favor ingresa un número válido.')
-    .requireNumber()
-    .build();
-  itemMonto.setValidation(textValidation);
-  // Pregunta 2: Empresa / Detalle
-  form.addTextItem().setTitle('¿En qué gastaste? (Empresa/Detalle)').setRequired(true);
-  // Pregunta 3: Categoría (Lista desplegable cargada desde Excel)
-  form.addListItem()
-      .setTitle('Categoría')
-      .setChoiceValues(categorias)
-      .setRequired(true);
-
-
-}
