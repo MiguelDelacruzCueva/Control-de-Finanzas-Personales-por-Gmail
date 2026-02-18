@@ -438,4 +438,19 @@ function actualizarValidacionCategorias() {
       listaCategorias.push(valor);
     }
   }
+  // Quitamos duplicados y ordenamos
+  listaCategorias = [...new Set(listaCategorias)].sort();
+  
+  // 3. APLICAR VALIDACIÓN en la Hoja DATA (Columna J -> Índice 10)
+  // Aplicamos desde la fila 2 hasta la 1000 (o el final)
+  var rangoValidacion = hojaData.getRange(2, 10, hojaData.getMaxRows() - 1, 1);
+  
+  var regla = SpreadsheetApp.newDataValidation()
+    .requireValueInList(listaCategorias, true) // true = Mostrar flechita
+    .setAllowInvalid(true) // Permitir escribir cosas nuevas si quieres
+    .build();
+    
+  rangoValidacion.setDataValidation(regla);
+  
+  Logger.log("Desplegables actualizados con: " + listaCategorias);
 }
