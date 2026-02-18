@@ -403,10 +403,39 @@ function obtenerNombreMes(fecha) {
 
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
-  ui.createMenu('💰 Mis Finanzas')
-      .addItem('🔄 Actualizar Gastos', 'ejecutarSistema')
-      .addItem('🛠️ Actualizar Desplegables', 'actualizarValidacionCategorias')
+  ui.createMenu(' Mis Finanzas')
+      .addItem(' Actualizar Gastos', 'ejecutarSistema')
+      .addItem(' Actualizar Desplegables', 'actualizarValidacionCategorias')
       .addToUi();
       
   actualizarValidacionCategorias();
+}
+function actualizarValidacionCategorias() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var hojaConfig = ss.getSheetByName(GLOBAL_CONFIG.HOJA_CONFIG);
+  var hojaData = ss.getSheetByName(GLOBAL_CONFIG.HOJA_DATOS);
+  
+  if (!hojaConfig || !hojaData) return;
+
+  // 1. Leer la Columna B de CONFIG (Donde están Categorías y Tarjetas mezcladas)
+  var lastRow = hojaConfig.getLastRow();
+  if (lastRow < 2) return;
+  
+  // Obtenemos valores de Columna B (índice 2)
+  var valoresRaw = hojaConfig.getRange(2, 2, lastRow - 1, 1).getValues();
+  
+  // 2. FILTRAR: Queremos categorías, NO números de tarjeta
+  var listaCategorias = [];
+  
+  for (var i = 0; i < valoresRaw.length; i++) {
+    var valor = valoresRaw[i][0];
+    
+    // Regla: Si es texto Y NO es un número de 4 dígitos (tarjeta)
+    // isNaN(valor) devuelve true si es texto ("Comida"). 
+    // Devuelve false si es numero (3111).
+    // Agregamos toString() por seguridad.
+    if (valor && isNaN(valor)) {
+      listaCategorias.push(valor);
+    }
+  }
 }
