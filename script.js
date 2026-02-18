@@ -400,3 +400,13 @@ function obtenerNombreMes(fecha) {
  * Genera menús y validaciones automáticas
  * -----------------------------------------
  */
+
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('💰 Mis Finanzas')
+      .addItem('🔄 Actualizar Gastos', 'ejecutarSistema')
+      .addItem('🛠️ Actualizar Desplegables', 'actualizarValidacionCategorias')
+      .addToUi();
+      
+  actualizarValidacionCategorias();
+}
